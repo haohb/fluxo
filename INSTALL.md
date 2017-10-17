@@ -14,7 +14,7 @@ Under Ubuntu, they can be obtained using the apt environment:
 | cmake            | x               |      x          |
 | cmake-curses-gui | x               |      x          |
 | liblapack3       | x               |      x          |
-| liplapack-dev    | x               |      x          |
+| liblapack-dev    | x               |      x          |
 | gfortran         | x               |      x          |
 | g++              | x               |      x          |
 |  mpi-default-dev | x               |      x          |
