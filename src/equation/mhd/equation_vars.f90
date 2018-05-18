@@ -28,12 +28,14 @@ LOGICAL             :: doCalcSource      !< logical to define if a source term (
 INTEGER             :: IniExactFunc      !< Exact Function for initialization
 INTEGER             :: IniRefState       !< RefState for initialization (case IniExactFunc=1 only)
 INTEGER,PARAMETER   :: nAuxVar=8         !< number of auxiliary variables for average flux
+INTEGER             :: nRefState         !< number of RefState in inifile
 REAL,ALLOCATABLE    :: RefStatePrim(:,:) !< primitive reference states
 REAL,ALLOCATABLE    :: RefStateCons(:,:) !< =primToCons(RefStatePrim)
 ! Boundary condition arrays
 REAL,ALLOCATABLE    :: BCData(:,:,:,:)  !< data for steady state boundary conditions
 INTEGER,ALLOCATABLE :: nBCByType(:)     !< Number of sides for each boundary
 INTEGER,ALLOCATABLE :: BCSideID(:,:)    !< SideIDs for BC types
+REAL                :: R                !< Gas constant
 #if PARABOLIC
 REAL                :: mu               !< fluid viscosity, NOT mu0 like in Navier-stokes ANYMORE!!!!
 REAL                :: eta              !< Current resistivity
@@ -41,7 +43,6 @@ REAL                :: etasmu_0         !< =eta/mu0
 REAL                :: Pr               !< Prandtl number
 REAL                :: KappasPr         !< =kappa/Pr
 REAL                :: s23              !< (=2/3 for Navier stokes) part of stress tensor: mu*((nabla v)+(nabla v)^T-s23*div(v))
-REAL                :: R                !< Gas constant
 #  ifdef PP_ANISO_HEAT
 REAL                :: kperp            !< perpendicular (to magnetic field) heat diffusion coefficient
 REAL                :: kpar             !< parallel (to magnetic field) heat diffusion coeffcient 
@@ -136,6 +137,16 @@ END INTERFACE
 !  MODULE PROCEDURE ConsToEntropyVec
 !END INTERFACE
 
+#if PARABOLIC
+INTERFACE ConvertToGradPrim
+  MODULE PROCEDURE ConvertToGradPrim
+END INTERFACE
+
+!INTERFACE ConvertToGradPrimVec
+!  MODULE PROCEDURE ConvertToGradPrimVec
+!END INTERFACE
+#endif /*PARABOLIC*/
+
 INTERFACE WaveSpeeds1D
   MODULE PROCEDURE WaveSpeeds1D
 END INTERFACE
@@ -177,11 +188,7 @@ prim(1)=cons(1)
 ! velocity
 prim(2:4)=cons(2:4)*sRho
 ! GAS PRESSURE (WITHOUT magnetic pressure)
-#ifdef PP_GLM
-prim(5)=KappaM1*(cons(5)-0.5*SUM(cons(2:4)*prim(2:4))-s2mu_0*(SUM(cons(6:8)*cons(6:8))+cons(9)*cons(9)))
-#else
-prim(5)=KappaM1*(cons(5)-0.5*SUM(cons(2:4)*prim(2:4))-s2mu_0*SUM(cons(6:8)*cons(6:8)))
-#endif /*PP_GLM*/
+prim(5)=KappaM1*(cons(5)-0.5*SUM(cons(2:4)*prim(2:4))-s2mu_0*SUM(cons(6:PP_nVar)*cons(6:PP_nVar)))
 ! B,psi
 prim(6:PP_nVar)=cons(6:PP_nVar)
 END SUBROUTINE ConsToPrim
@@ -208,11 +215,7 @@ cons(1)=prim(1)
 ! velocity
 cons(2:4)=prim(2:4)*prim(1)
 ! total energy
-#ifdef PP_GLM
-cons(5)=sKappaM1*prim(5)+0.5*SUM(cons(2:4)*prim(2:4))+s2mu_0*(SUM(prim(6:8)*prim(6:8))+prim(9)*prim(9))
-#else
-cons(5)=sKappaM1*prim(5)+0.5*SUM(cons(2:4)*prim(2:4))+s2mu_0*SUM(prim(6:8)*prim(6:8))
-#endif /*PP_GLM*/
+cons(5)=sKappaM1*prim(5)+0.5*SUM(cons(2:4)*prim(2:4))+s2mu_0*(SUM(prim(6:PP_nVar)*prim(6:PP_nVar)))
 ! B,psi
 cons(6:PP_nVar)=prim(6:PP_nVar)
 END SUBROUTINE PrimToCons
@@ -265,7 +268,7 @@ END SUBROUTINE PrimToConsVec
 
 
 !==================================================================================================================================
-!> Transformation from conservative variables to primitive variables a la Ismail and Roe
+!> Transformation from conservative variables U to entropy vector, dS/dU, S = -rho*s/(kappa-1), s=ln(p)-kappa*ln(rho)
 !==================================================================================================================================
 FUNCTION ConsToEntropy(cons) RESULT(Entropy)
 ! MODULES
@@ -279,40 +282,35 @@ REAL,DIMENSION(PP_nVar),INTENT(IN)  :: cons    !< vector of conservative variabl
 REAL,DIMENSION(PP_nVar)             :: entropy !< vector of entropy variables
 !----------------------------------------------------------------------------------------------------------------------------------
 ! LOCAL VARIABLES
-REAL                                :: p,v(3),v2,beta2
+REAL                                :: p,v(3),v2,rho_sp,s
 !==================================================================================================================================
-v(:)  = cons(2:4)/cons(1)
-v2=SUM(v*v)
-#ifdef PP_GLM
-p     = KappaM1*(cons(5)-0.5*cons(1)*v2-s2mu_0*(SUM(cons(6:8)*cons(6:8)) +cons(9)*cons(9)))
-#else
-p     = KappaM1*(cons(5)-0.5*cons(1)*v2-s2mu_0*SUM(cons(6:8)*cons(6:8)))
-#endif /*PP_GLM*/
-!s     = LOG(p) - kappa*LOG(cons(1))
-beta2 = cons(1)/p !/2
+v(:)   = cons(2:4)/cons(1)
+v2     = SUM(v*v)
+p      = KappaM1*(cons(5)-0.5*cons(1)*v2-s2mu_0*SUM(cons(6:PP_nVar)*cons(6:PP_nVar))) ! includes psi^2 if PP_nVar=9
+s      = LOG(p) - kappa*LOG(cons(1))
+rho_sp = cons(1)/p
 
 ! Convert to entropy variables
-entropy(1)   =  (kappa*(1.0+LOG(cons(1)))-LOG(p))*skappaM1 - 0.5*beta2*v2  !(kappa-s)/(kappa-1)-beta*|v|^2
-entropy(2:4) =  beta2*v(:)                         ! 2*beta*v
-entropy(5)   = -beta2                              !-2*beta
-entropy(6:PP_nVar) =  beta2*cons(6:PP_nVar)        ! 2*beta*B
-                                                   ! 2*beta*psi
+entropy(1)         =  (kappa-s)*skappaM1 - 0.5*rho_sp*v2  !(kappa-s)/(kappa-1)-beta*|v|^2
+entropy(2:4)       =  rho_sp*v(:)                  ! 2*beta*v
+entropy(5)         = -rho_sp                       !-2*beta
+entropy(6:PP_nVar) =  rho_sp*cons(6:PP_nVar)       ! 2*beta*B +2*beta*psi
 
 END FUNCTION ConsToEntropy
 
 !==================================================================================================================================
-!> Transformation from conservative variables to primitive variables
+!> Transformation from conservative variables U to entropy vector, dS/dU, S = -rho*s/(kappa-1), s=ln(p)-kappa*ln(rho)
 !==================================================================================================================================
-FUNCTION ConsToEntropyVec(dim2,cons) RESULT(Entropy)
+SUBROUTINE ConsToEntropyVec(dim2,Entropy,cons)
 ! MODULES
 IMPLICIT NONE 
 !----------------------------------------------------------------------------------------------------------------------------------
 ! INPUT VARIABLES
 INTEGER,INTENT(IN)  :: dim2 
-REAL,INTENT(IN)     :: cons(PP_nVar,dim2) !< vector of primitive variables
+REAL,INTENT(IN)     :: cons(PP_nVar,dim2) !< vector of conservative variables
 !----------------------------------------------------------------------------------------------------------------------------------
 ! OUTPUT VARIABLES
-REAL                :: Entropy(PP_nVar,dim2) !< vector of conservative variables
+REAL,INTENT(OUT)    :: Entropy(PP_nVar,dim2) !< vector of entropy variables
 !----------------------------------------------------------------------------------------------------------------------------------
 ! LOCAL VARIABLES 
 INTEGER             :: i
@@ -320,7 +318,100 @@ INTEGER             :: i
 DO i=1,dim2
   Entropy(:,i)=ConsToEntropy(Cons(:,i))
 END DO!i
-END FUNCTION ConsToEntropyVec
+END SUBROUTINE ConsToEntropyVec
+
+
+#if PARABOLIC
+!==================================================================================================================================
+!> transform gradient from conservative / primitive or entropy variables to primitive variables 
+!==================================================================================================================================
+FUNCTION ConvertToGradPrim(cons,grad_in) RESULT(gradP)
+! MODULES
+IMPLICIT NONE 
+!----------------------------------------------------------------------------------------------------------------------------------
+! INPUT VARIABLES
+REAL,INTENT(IN)     :: cons(PP_nVar)    !< conservative state 
+REAL,INTENT(IN)     :: grad_in(PP_nVar) !< can be gradient of conservative / primivite /entropy variables
+!----------------------------------------------------------------------------------------------------------------------------------
+! OUTPUT VARIABLES
+REAL                :: gradP(PP_nVar) !<  gradient of primitive variables (rho,v1,v2,v3,p,B1,B2,B3,psi)
+!----------------------------------------------------------------------------------------------------------------------------------
+! LOCAL VARIABLES 
+#if (PP_Lifting_Var==1) 
+REAL  :: sRho,v(3),gradv(3)
+#elif (PP_Lifting_Var==3) 
+REAL  :: sRho,v(3),gradv(3),Ekin,p,rho_sp,p_srho
+#endif /*PP_Lifting_Var*/
+!==================================================================================================================================
+
+#if (PP_Lifting_Var==1) 
+  !grad_in is gradient of conservative variable
+  sRho      = 1./cons(1)
+      v(:)  = cons(2:4)*sRho
+  gradv(:)  = sRho*(grad_in(2:4)-grad_in(1)*v(:))
+  
+  !density gradient
+  gradP(1)  = grad_in(1)
+  !velocity gradient
+  gradP(2:4)= gradv(:)
+  !pressure gradient
+  gradP(5)  = KappaM1*(grad_in(5)                                        & !gradE
+                       -(0.5*grad_in(1)*SUM(v*v) + SUM(cons(2:4)*gradv)) & !-grad_Ekin
+                       - smu_0*SUM(cons(6:PP_nVar)*grad_in(6:PP_nVar))   ) !-grad_Emag
+  !gradient of B,psi same in primitive
+  gradP(6:PP_nVar)=grad_in(6:PP_nVar) 
+#elif (PP_Lifting_Var==2) 
+  !grad_in is gradient of primitive variable, do nothing
+  gradP(:)=grad_in(:)
+#elif (PP_Lifting_Var==3) 
+  !grad_in is gradient of entropy variable,  entropy variables are:
+  ! w(1)= (kappa-s)/(kappa-1)+(rho/p)/2*|v|^2  ,w(2:4)=(rho/p)*v, w(5)=-(rho/p), w(6:8)=(rho/p)*B(:) , w(9)=(rho/p)*psi 
+
+  !gradient of (p/rho),  (p/rho)_x = -grad_in(5)
+
+  sRho   = 1./cons(1)
+  v(:)   = cons(2:4)*sRho
+  Ekin   = 0.5*SUM(cons(2:4)*v)
+  p      = KappaM1*(cons(5)-Ekin-s2mu_0*SUM(cons(6:PP_nVar)*cons(6:PP_nVar))) ! includes psi^2 if PP_nVar=9
+  rho_sp = cons(1)/p
+  p_srho = p * sRho
+  
+  gradv  = p_sRho * (grad_in(2:4) +v(:)*grad_in(5))
+  
+  !density gradient, rho_x = rho*w1_x + (rho/p)_x * (-p/(gamma-1) + 1/2*rho*|v|^2 )  + (rho/p)*(rho*v) . v_x
+  gradP(1)  = cons(1)*grad_in(1) - grad_in(5)*(Ekin -p*sKappaM1) + rho_sp*SUM(cons(2:4)*gradv(:))
+  !velocity gradient
+  gradP(2:4)= gradv(:)
+  !pressure gradient, =1/(rho/p)*(rho_x-p*(rho/p)_x)
+  gradP(5)  = p_srho * (gradP(1) + p *grad_in(5))
+  !gradient of B,psi: 
+  gradP(6:PP_nVar) = p_sRho * (grad_in(6:PP_nVar) +cons(6:PP_nVar)*grad_in(5))
+#endif /*PP_Lifting_Var*/
+END FUNCTION ConvertToGradPrim
+
+!==================================================================================================================================
+!> transform gradient from conservative / primitive or entropy variables to primitive variables 
+!==================================================================================================================================
+SUBROUTINE ConvertToGradPrimVec(dim2,cons,gradP)
+! MODULES
+IMPLICIT NONE 
+!----------------------------------------------------------------------------------------------------------------------------------
+! INPUT VARIABLES
+INTEGER,INTENT(IN)  :: dim2 
+REAL,INTENT(IN)     :: cons(PP_nVar,dim2)    !< conservative state 
+!----------------------------------------------------------------------------------------------------------------------------------
+! OUTPUT VARIABLES
+REAL,INTENT(INOUT)    :: gradP(PP_nVar,dim2) !<  on intput: can be gradient of conservative / primivite /entropy variables
+                                             !<  on output: gradient of primitive variables (rho,v1,v2,v3,p,B1,B2,B3,psi)
+!----------------------------------------------------------------------------------------------------------------------------------
+! LOCAL VARIABLES 
+INTEGER             :: i
+!==================================================================================================================================
+DO i=1,dim2
+  gradP(:,i)=ConvertToGradPrim(cons(:,i),gradP(:,i))
+END DO!i
+END SUBROUTINE ConvertToGradPrimVec
+#endif /*PARABOLIC*/
 
 !==================================================================================================================================
 !> calculate all wave speeds 
