@@ -1,5 +1,19 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
+#==================================================================================================================================
+# Copyright (c) 2016 - 2017 Gregor Gassner
+# Copyright (c) 2016 - 2017 Florian Hindenlang
+# Copyright (c) 2016 - 2017 Andrew Winters
+#
+# This file is part of FLUXO (github.com/project-fluxo/fluxo). FLUXO is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 
+# of the License, or (at your option) any later version.
+#
+# FLUXO is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty
+# of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License v3.0 for more details.
+#
+# You should have received a copy of the GNU General Public License along with FLUXO. If not, see <http://www.gnu.org/licenses/>.
+#==================================================================================================================================
 
 import os
 import sys
@@ -23,7 +37,7 @@ def test_fluxo( buildopts=None , case=0, project="test" , ntail = 0 ,
       return False
    # build directory
    builddir=("dirx_%d_%s" % (case,project))
-   log_path=("../log.%d_%s" % (case,project))
+   log_path=("../log_%d_%s.txt" % (case,project))
 
    cwd = os.getcwd()  #current working directory
    if (stage < 2) :
@@ -214,8 +228,8 @@ parser.add_argument('-p','--procs',type=int,default=1, help='    number of proce
 parser.add_argument('-withmpi', type=int, default=1,   help="1 : DEFAULT ,compile with mpi\n"
                                                             "0 : compile without mpi  ")
 
-parser.add_argument('-buildhdf5', type=int, default=1, help="1 : DEFAULT, build hdf5 locally,\n"
-                                                            "0 : use external hdf5 (modules)")
+parser.add_argument('-buildhdf5', type=int, default=0, help="0 : DEFAULT, use external hdf5 (modules),\n"
+                                                            "1 : build hdf5 locally")
 
 parser.add_argument('-hostname', type=str, default="", help="    cmake hostname, only needed if compiling on a cluster" )
 
@@ -379,6 +393,22 @@ if(cases[0]==0 or (caseID in cases)) :
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 caseID=caseID+1
 if(cases[0]==0 or (caseID in cases)) :
+   pname="build_linadv_type1_GL_nopara"
+   print( "caseID: %d name: %s" % (caseID,pname) )
+
+   options=[]; options.extend(globopts) ; options.extend(baseopts)
+   options.extend([
+             "CMAKE_BUILD_TYPE"       ,"Debug"
+            ,"FLUXO_DISCTYPE"         ,"1"
+            ,"FLUXO_DISC_NODETYPE"    ,"GAUSS-LOBATTO"
+            ,"FLUXO_PARABOLIC"        ,"OFF"
+           ])
+   
+   if(not dbg ) : stat = test_fluxo(buildopts=options, case=caseID, project=pname, ntail = args.ntail ,\
+                           stage=args.stage , run_test=TEST , mpi_procs = args.procs , err=builderr )
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+caseID=caseID+1
+if(cases[0]==0 or (caseID in cases)) :
    pname="build_linadv_type1_Gauss_br2"
    print( "caseID: %d name: %s" % (caseID,pname) )
 
@@ -494,7 +524,7 @@ TEST.extend(["freestream","parameter_freestream_mhd.ini", "1.0e-10" ])
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 caseID=caseID+1
 if(cases[0] ==0 or (caseID in cases)) :
-   pname="build_mhd_release_type1_GL"
+   pname="build_mhd_release_type1_GL_br1"
    print( "caseID: %d name: %s" % (caseID,pname) )
 
    options=[]; options.extend(globopts) ; options.extend(baseopts)
@@ -513,7 +543,26 @@ if(cases[0] ==0 or (caseID in cases)) :
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 caseID=caseID+1
 if(cases[0] ==0 or (caseID in cases)) :
-   pname="build_mhd_release_type2"
+   pname="build_mhd_release_type1_Gauss_br2"
+   print( "caseID: %d name: %s" % (caseID,pname) )
+
+   options=[]; options.extend(globopts) ; options.extend(baseopts)
+   options.extend([
+             "CMAKE_BUILD_TYPE"       ,"Release"
+            ,"FLUXO_DISCTYPE"         ,"1"
+            ,"FLUXO_EQN_GLM"          ,"ON"
+            ,"FLUXO_DISC_NODETYPE"    ,"GAUSS"
+            ,"FLUXO_PARABOLIC"        ,"ON"
+            ,"FLUXO_PARABOLIC_LIFTING","br2"
+            ,"FLUXO_TESTCASE"         ,"default"
+           ])
+   
+   if(not dbg ) : stat = test_fluxo(buildopts=options, case=caseID, project=pname, ntail = args.ntail ,\
+                          stage=args.stage , run_test=TEST , mpi_procs = args.procs , err=builderr )
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+caseID=caseID+1
+if(cases[0] ==0 or (caseID in cases)) :
+   pname="build_mhd_release_type2_br2"
    print( "caseID: %d name: %s" % (caseID,pname) )
 
    options=[]; options.extend(globopts) ; options.extend(baseopts)
@@ -551,7 +600,7 @@ if(cases[0]==0 or (caseID in cases)) :
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 caseID=caseID+1
 if(cases[0]==0 or (caseID in cases)) :
-   pname="build_mhd_type1_GL_br1"
+   pname="build_mhd_type1_GL_br2"
    print( "caseID: %d name: %s" % (caseID,pname) )
 
    options=[]; options.extend(globopts) ; options.extend(baseopts)
@@ -560,6 +609,25 @@ if(cases[0]==0 or (caseID in cases)) :
             ,"FLUXO_DISCTYPE"         ,"1"
             ,"FLUXO_EQN_GLM"          ,"ON"
             ,"FLUXO_DISC_NODETYPE"    ,"GAUSS-LOBATTO"
+            ,"FLUXO_PARABOLIC"        ,"ON"
+            ,"FLUXO_PARABOLIC_LIFTING","br2"
+            ,"FLUXO_TESTCASE"         ,"default"
+           ])
+   
+   if(not dbg ) : stat = test_fluxo(buildopts=options, case=caseID, project=pname, ntail = args.ntail ,\
+                          stage=args.stage , run_test=TEST , mpi_procs = args.procs , err=builderr )
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+caseID=caseID+1
+if(cases[0]==0 or (caseID in cases)) :
+   pname="build_mhd_type1_Gauss_br1"
+   print( "caseID: %d name: %s" % (caseID,pname) )
+
+   options=[]; options.extend(globopts) ; options.extend(baseopts)
+   options.extend([
+             "CMAKE_BUILD_TYPE"       ,"Debug"
+            ,"FLUXO_DISCTYPE"         ,"1"
+            ,"FLUXO_EQN_GLM"          ,"ON"
+            ,"FLUXO_DISC_NODETYPE"    ,"GAUSS"
             ,"FLUXO_PARABOLIC"        ,"ON"
             ,"FLUXO_PARABOLIC_LIFTING","br1"
             ,"FLUXO_TESTCASE"         ,"default"
@@ -609,7 +677,7 @@ if(cases[0]==0 or (caseID in cases)) :
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 caseID=caseID+1
 if(cases[0]==0 or (caseID in cases)) :
-   pname="build_mhd_type1_nopara"
+   pname="build_mhd_type1_GL_nopara"
    print( "caseID: %d name: %s" % (caseID,pname) )
 
    options=[]; options.extend(globopts) ; options.extend(baseopts)
@@ -627,7 +695,26 @@ if(cases[0]==0 or (caseID in cases)) :
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 caseID=caseID+1
 if(cases[0]==0 or (caseID in cases)) :
-   pname="build_mhd_type2_nopara_noGLM_cart"
+   pname="build_mhd_type2_noGLM_nopara"
+   print( "caseID: %d name: %s" % (caseID,pname) )
+
+   options=[]; options.extend(globopts) ; options.extend(baseopts)
+   options.extend([
+             "CMAKE_BUILD_TYPE"       ,"Debug"
+            ,"FLUXO_DISCTYPE"         ,"2"
+            ,"FLUXO_EQN_GLM"          ,"OFF"
+            ,"FLUXO_DISC_CARTESIANFLUX","OFF"
+            ,"FLUXO_DISC_NODETYPE"    ,"GAUSS-LOBATTO"
+            ,"FLUXO_PARABOLIC"        ,"OFF"
+            ,"FLUXO_TESTCASE"         ,"default"
+           ])
+   
+   if(not dbg ) : stat = test_fluxo(buildopts=options, case=caseID, project=pname, ntail = args.ntail ,\
+                          stage=args.stage , run_test=TEST , mpi_procs = args.procs , err=builderr )
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+caseID=caseID+1
+if(cases[0]==0 or (caseID in cases)) :
+   pname="build_mhd_type2_br1_noGLM_cart"
    print( "caseID: %d name: %s" % (caseID,pname) )
 
    options=[]; options.extend(globopts) ; options.extend(baseopts)
@@ -637,7 +724,8 @@ if(cases[0]==0 or (caseID in cases)) :
             ,"FLUXO_EQN_GLM"          ,"OFF"
             ,"FLUXO_DISC_CARTESIANFLUX","ON"           #=> runtest off
             ,"FLUXO_DISC_NODETYPE"    ,"GAUSS-LOBATTO"
-            ,"FLUXO_PARABOLIC"        ,"OFF"
+            ,"FLUXO_PARABOLIC"        ,"ON"
+            ,"FLUXO_PARABOLIC_LIFTING","br1"
             ,"FLUXO_TESTCASE"         ,"default"
            ])
    
@@ -800,6 +888,22 @@ if(cases[0]==0 or (caseID in cases)) :
    if(not dbg ) : stat = test_fluxo(buildopts=options, case=caseID, project=pname, ntail = args.ntail ,\
                           stage=args.stage, run_test=None , mpi_procs = args.procs , err=builderr )
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+caseID=caseID+1
+if(cases[0]==0 or (caseID in cases)) :
+   pname="build_navierstokes_type1_GL_nopara_TC_angmom"
+   print( "caseID: %d name: %s" % (caseID,pname) )
+
+   options=[]; options.extend(globopts) ; options.extend(baseopts)
+   options.extend([
+             "CMAKE_BUILD_TYPE"       ,"Debug"
+            ,"FLUXO_DISCTYPE"         ,"1"
+            ,"FLUXO_DISC_NODETYPE"    ,"GAUSS-LOBATTO"
+            ,"FLUXO_PARABOLIC"        ,"OFF"
+            ,"FLUXO_TESTCASE"         ,"ns_angularmomentum"
+           ])
+   
+   if(not dbg ) : stat = test_fluxo(buildopts=options, case=caseID, project=pname, ntail = args.ntail ,\
+                          stage=args.stage , run_test=TEST , mpi_procs = args.procs , err=builderr )
 
 #============================================================================
 #FINAL ERROR HANDLING:

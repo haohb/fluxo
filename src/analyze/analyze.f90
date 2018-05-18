@@ -53,6 +53,7 @@ SUBROUTINE DefineParametersAnalyze()
 ! MODULES
 USE MOD_ReadInTools ,ONLY: prms
 USE MOD_AnalyzeEquation ,ONLY: DefineParametersAnalyzeEquation
+USE MOD_Testcase_Analyze,ONLY: DefineParametersAnalyzeTestcase
 IMPLICIT NONE
 !==================================================================================================================================
 CALL prms%SetSection("Analyze")
@@ -70,6 +71,7 @@ CALL prms%CreateLogicalOption('CalcMeanFlux',"Computes the integral of the flux 
 CALL prms%CreateIntOption(    'NAnalyze'   ,     "Polynomial degree at which analysis is performed (e.g. for L2 errors). "//&
                                                  "Default: 2*N.")
 CALL DefineParametersAnalyzeEquation()
+CALL DefineParametersAnalyzeTestcase()
 END SUBROUTINE DefineParametersAnalyze
 
 !==================================================================================================================================
@@ -110,9 +112,9 @@ IF(doCalcErrorNorms)THEN
 END IF
 doCalcMeanFlux   =GETLOGICAL('CalcMeanFlux','.FALSE.')
 
-Analyze_dt          =GETREAL('Analyze_dt','0.')
-nWriteData          =GETINT('nWriteData','1')
-NAnalyze          =GETINT('NAnalyze'   ,INTTOSTR(2*(PP_N+1))) 
+Analyze_dt       =GETREAL('Analyze_dt','0.')
+nWriteData       =GETINT('nWriteData','1')
+NAnalyze         =GETINT('NAnalyze'   ,INTTOSTR(2*(PP_N+1)))
 
 WriteData_dt = Analyze_dt*nWriteData
 

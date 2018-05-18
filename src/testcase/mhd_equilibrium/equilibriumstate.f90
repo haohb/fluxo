@@ -48,6 +48,7 @@ USE MOD_Globals
 USE MOD_PreProc
 USE MOD_Testcase_Vars
 USE MOD_Testcase_ExactFunc ,ONLY: TestcaseExactFunc
+USE MOD_Testcase_analyze   ,ONLY: CalcAngMom 
 USE MOD_CalcTimeStep       ,ONLY: CalcTimeStep
 USE MOD_DG                 ,ONLY: DGTimeDerivative
 USE MOD_DG_Vars            ,ONLY: U,Ut,U_master,U_slave
@@ -88,7 +89,7 @@ INTEGER             :: errType
 INTEGER             :: nTotal
 CHARACTER(LEN=255)  :: FileTypeStr
 !CHECK
-REAL                :: deltaB(3),maxjmp_B(3)
+REAL                :: deltaB(3),maxjmp_B(3),AngMom_t(3)
 !==================================================================================================================================
 SWRITE(UNIT_StdOut,'(132("-"))')
 SWRITE(UNIT_stdOut,'(A)') ' INIT EQUILIBRIUM STATE...'
@@ -137,10 +138,13 @@ ELSEIF(EquilibriumStateIni.EQ.-3) THEN
 ELSEIF(EquilibriumStateIni.EQ.-4) THEN 
   EquilibriumDivBcorr=.FALSE. !Apot not there
   CALL ReadEquilibriumFromMesh(Ueq)
-  CALL ConsToPrimVec(nTotal,U_tmp,Ueq) !use density, velocity and pressure from equilibrium
   CALL ReadEquilibriumFromState(EquilibriumStateFile,Ueq) !overwrite Ueq with U from Statefile
-  U_tmp(6:PP_nVar,:,:,:,:)=Ueq(6:PP_nVar,:,:,:,:) !only use Bfield and psi=0
-  CALL PrimToConsVec(nTotal,U_tmp,Ueq)
+  U_tmp(  1,:,:,:,:) =InputEq(  1,:,:,:,:) !density
+  U_tmp(2:4,:,:,:,:) =0.
+  U_tmp(  5,:,:,:,:) =InputEq(  2,:,:,:,:) !pressure
+  U_tmp(6:8,:,:,:,:) =Ueq(6:8,:,:,:,:) 
+  U_tmp(  9,:,:,:,:) =0.
+
 END IF !EquilibriumState
 
 IF(EquilibriumDivBcorr)THEN
@@ -192,7 +196,7 @@ END IF
 
 !set state state Dirichlet BC 21: equilibrium state evaluated at the Boundary!
 ! U=Ueq, already prolonged to boundary sides
-IF(BC21exists)THEN
+IF(EqBCexists)THEN
   IF(.NOT.ALLOCATED(BCdata))THEN
     ALLOCATE(BCdata(1:PP_nVar,0:PP_N,0:PP_N,nBCSides))
   END IF
@@ -200,13 +204,14 @@ END IF
 DO iBC=1,nBCs
   IF(nBCByType(iBC).LE.0) CYCLE
   BCType =BoundaryType(iBC,BC_TYPE)
-  IF(BCType.NE.21) CYCLE
-  nBCLoc =nBCByType(iBC)
-  ! FOR BCType 21, use equilibrium state as BC
-  DO iSide=1,nBCLoc
-    SideID=BCSideID(iBC,iSide)
-    BCdata(:,:,:,SideID)=U_master(:,:,:,SideID)
-  END DO !iSide=1,nBCloc
+  IF((BCType.EQ.21).OR.(BCType.EQ.29))THEN
+    nBCLoc =nBCByType(iBC)
+    ! FOR BCType 21/29, use equilibrium state as BC
+    DO iSide=1,nBCLoc
+      SideID=BCSideID(iBC,iSide)
+      BCdata(:,:,:,SideID)=U_master(:,:,:,SideID)
+    END DO !iSide=1,nBCloc
+  END IF !BCtype=21/29
 END DO !iBC=1,nBCs
 U_master=0.
 U_slave=0.
@@ -220,7 +225,9 @@ Uteq= Ut
 Ut=0.
 !check time derivative norms
 CALL EvalNorms(Uteq)
-
+CALL CalcAngMom(angMom_t,Uteq)
+SWRITE(UNIT_StdOut,'(A,3E21.13)')' Angular Momentum of Uteq (X,Y,Z) : ', angMom_t(:)
+SWRITE(UNIT_StdOut,'(66("-"))')
 
 IF(doRestart)THEN
   U=U_tmp !copy U back

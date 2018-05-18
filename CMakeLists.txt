@@ -16,7 +16,7 @@ INCLUDE(CMakeDependentOption)
 
 
 # =========================================================================
-# Detect machine environements
+# Detect machine environments
 # =========================================================================
 SITE_NAME(CMAKE_HOSTNAME)
 STRING(FIND "${CMAKE_HOSTNAME}" "eslogin" ONHORNET)
@@ -75,9 +75,9 @@ SUBDIRLIST(LIFTINGS   ${CMAKE_CURRENT_SOURCE_DIR}/src/dg/)
 
 
 OPTION(FLUXO_BUILD_MPI "Compile SINGLE or MPI version" ON)
-OPTION(FLUXO_BUILD_MKL "Use MKL libraries instead of BLAS/LAPACK" OFF)
+#OPTION(FLUXO_BUILD_MKL "Use MKL libraries instead of BLAS/LAPACK" OFF)
 OPTION(FLUXO_BUILD_PAPI "Use PAPI library to perform performance measurements (e.g. flop counts)." OFF)
-OPTION(FLUXO_BUILD_HDF5 "Compile and build hdf5 library" ON)
+OPTION(FLUXO_BUILD_HDF5 "Compile and build hdf5 library" OFF)
 
 OPTION(FLUXO_PARABOLIC "Enable parabolic terms of equation-system" OFF)
 
@@ -93,6 +93,8 @@ SET(FLUXO_POLYNOMIAL_DEGREE "N" CACHE STRING
                         "N: compile with variable polynomial degree. 1,2,...: fix polynomial degree (untested).")
 ADD_DEFINITIONS(-DPP_N=${FLUXO_POLYNOMIAL_DEGREE})
 MARK_AS_ADVANCED(FLUXO_POLYNOMIAL_DEGREE)
+
+SET(_BUILD_FLUXO_POST  OFF  CACHE BOOL "switch to also build the fluxo_post executable (reads a collection of states and calls analyze).")
 
 # =========================================================================
 # PREPROCESSOR FLAGS
@@ -164,7 +166,7 @@ IF(FLUXO_EQNSYSNAME STREQUAL "mhd")
   ENDIF()
   SET(FLUXO_EQN_ANISO_HEAT  OFF  CACHE BOOL "switch on anisotropic heat diffusion in mhd equation.")
   IF(FLUXO_EQN_ANISO_HEAT)
-    ADD_DEFINITIONS(-DPP_ANISO_HEAT=T)
+    ADD_DEFINITIONS(-DPP_ANISO_HEAT=1)
   ENDIF()
 ELSE()
   UNSET(FLUXO_EQN_GLM CACHE ) # if not mhd
@@ -410,14 +412,14 @@ ENDIF()
 # LAPACK/MKL library
 # =========================================================================
 # use Lapack/Blas for GNU
-MESSAGE(STATUS "Using BLAS/Lapack library")
-IF (FLUXO_BUILD_MKL)
-  SET(BLA_VENDOR "Intel") #search only for Intel BLAS (=MKL)
-ENDIF()
-FIND_PACKAGE(LAPACK QUIET)
-IF (LAPACK_FOUND)
-  LIST(APPEND linkedlibs ${LAPACK_LIBRARIES})
-ENDIF()
+#MESSAGE(STATUS "Using BLAS/Lapack library")
+#IF (FLUXO_BUILD_MKL)
+#  SET(BLA_VENDOR "Intel") #search only for Intel BLAS (=MKL)
+#ENDIF()
+#FIND_PACKAGE(LAPACK QUIET)
+#IF (LAPACK_FOUND)
+#  LIST(APPEND linkedlibs ${LAPACK_LIBRARIES})
+#ENDIF()
 
 # =========================================================================
 # MPI
@@ -506,6 +508,11 @@ ADD_DEPENDENCIES(fluxolibF90 HDF5)
 
 add_exec(fluxo ./src/fluxo.f90)
 ADD_DEPENDENCIES(fluxo fluxolib HDF5)
+
+IF (_BUILD_FLUXO_POST)
+  add_exec(fluxo_post ./src/fluxo_post.f90)
+  ADD_DEPENDENCIES(fluxo_post fluxolib HDF5)
+ENDIF()
 
 # special compiler flags to avoid warnings for empty functions of testcase.f90 and overwrite of intrinsic abort in globals.f90
 #...# IF (CMAKE_Fortran_COMPILER_ID MATCHES "GNU")

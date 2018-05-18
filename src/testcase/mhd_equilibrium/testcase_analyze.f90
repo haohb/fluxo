@@ -33,19 +33,51 @@ INTERFACE AnalyzeTestCase
   MODULE PROCEDURE AnalyzeTestCase
 END INTERFACE
 
+INTERFACE CalcAngMom
+  MODULE PROCEDURE CalcAngMom
+END INTERFACE
 
+
+PUBLIC:: DefineParametersAnalyzeTestcase 
 PUBLIC:: InitAnalyzeTestCase
 PUBLIC:: AnalyzeTestCase
+PUBLIC:: CalcAngMom 
 
 CONTAINS
+
+!==================================================================================================================================
+!> Define parameters 
+!==================================================================================================================================
+SUBROUTINE DefineParametersAnalyzeTestcase()
+! MODULES
+USE MOD_ReadInTools ,ONLY: prms
+IMPLICIT NONE
+!----------------------------------------------------------------------------------------------------------------------------------
+! INPUT / OUTPUT VARIABLES
+!----------------------------------------------------------------------------------------------------------------------------------
+! LOCAL VARIABLES 
+!==================================================================================================================================
+CALL prms%SetSection("AnalyzeTestcase")
+CALL prms%CreateLogicalOption('CalcErrorToEquilibrium', &
+     "switch for TC_analyze: compute difference of |U-Ueq|" , '.FALSE.')
+CALL prms%CreateLogicalOption('CalcDeltaBEnergy', &
+     "switch for TC_analyze: compute Energy of 1/(2mu0)|B-Beq|^2" , '.FALSE.')
+CALL prms%CreateLogicalOption('CalcAngularMomentum', &
+     "switch for TC_analyze: compute total Angular momentum" , '.FALSE.')
+CALL prms%CreateRealArrayOption('TC_RotationCenter', &
+     "center around which the angular momentum will be computed.","0.,0.,0.")
+END SUBROUTINE DefineParametersAnalyzeTestcase
+
 !==================================================================================================================================
 !> Initialize Testcase specific analyze routines
 !==================================================================================================================================
 SUBROUTINE InitAnalyzeTestcase()
 ! MODULES
 USE MOD_Globals
+USE MOD_ReadInTools,      ONLY: GETLOGICAL,GETREALARRAY
 USE MOD_Analyze_Vars,     ONLY:doAnalyzeToFile,A2F_iVar,A2F_VarNames
 USE MOD_Testcase_Vars,    ONLY:doCalcErrorToEquilibrium,doCalcDeltaBEnergy
+USE MOD_Testcase_Vars,    ONLY:doCalcAngularMomentum,RotationCenter
 USE MOD_Equation_Vars,    ONLY:StrVarNames
 IMPLICIT NONE
 !----------------------------------------------------------------------------------------------------------------------------------
@@ -56,6 +88,11 @@ IMPLICIT NONE
 ! LOCAL VARIABLES
 INTEGER    :: iVar
 !==================================================================================================================================
+!TESTCASE ANALYZE
+doCalcErrorToEquilibrium = GETLOGICAL('CalcErrorToEquilibrium','.FALSE.')
+doCalcDeltaBEnergy       = GETLOGICAL('CalcDeltaBEnergy','.FALSE.')
+doCalcAngularMomentum    = GETLOGICAL('CalcAngularMomentum','.FALSE.')
+RotationCenter=GETREALARRAY('TC_RotationCenter',3,'0.0,0.0,0.0')
 !prepare AnalyzeToFile
 IF(MPIroot.AND.doAnalyzeToFile) THEN
   IF(doCalcErrorToEquilibrium)THEN
@@ -69,10 +106,22 @@ IF(MPIroot.AND.doAnalyzeToFile) THEN
     END DO
   END IF !CalcErrorToEquilibrium
   IF(doCalcDeltaBEnergy)THEN
-    DO iVar=1,PP_nVar
-      A2F_iVar=A2F_iVar+1
-      A2F_VarNames(A2F_iVar)='"DeltaB_Energy"'
-    END DO
+    A2F_iVar=A2F_iVar+1
+    A2F_VarNames(A2F_iVar)='"DeltaB_Energy"'
+  END IF !CalcErrorToEquilibrium
+  IF(doCalcAngularMomentum)THEN
+    A2F_iVar=A2F_iVar+1
+    A2F_VarNames(A2F_iVar)='"AngularMomentumX"'
+    A2F_iVar=A2F_iVar+1
+    A2F_VarNames(A2F_iVar)='"AngularMomentumY"'
+    A2F_iVar=A2F_iVar+1
+    A2F_VarNames(A2F_iVar)='"AngularMomentumZ"'
+    A2F_iVar=A2F_iVar+1
+    A2F_VarNames(A2F_iVar)='"AngularMomentum_t_X"'
+    A2F_iVar=A2F_iVar+1
+    A2F_VarNames(A2F_iVar)='"AngularMomentum_t_Y"'
+    A2F_iVar=A2F_iVar+1
+    A2F_VarNames(A2F_iVar)='"AngularMomentum_t_Z"'
   END IF !CalcErrorToEquilibrium
 END IF !MPIroot & doAnalyzeToFile
 END SUBROUTINE InitAnalyzeTestcase
@@ -85,7 +134,9 @@ SUBROUTINE AnalyzeTestcase(Time)
 USE MOD_Globals
 USE MOD_Analyze_Vars,     ONLY:doAnalyzeToFile,A2F_iVar,A2F_Data,Analyze_dt
 USE MOD_Testcase_Vars,    ONLY:doCalcErrorToEquilibrium,doCalcDeltaBEnergy,deltaB_Energy
+USE MOD_Testcase_Vars,    ONLY:doCalcAngularMomentum
 USE MOD_Restart_Vars,     ONLY:RestartTime
+USE MOD_DG_Vars,          ONLY: U,Ut
 IMPLICIT NONE
 !----------------------------------------------------------------------------------------------------------------------------------
 ! INPUT/OUTPUT VARIABLES
@@ -96,7 +147,7 @@ REAL,INTENT(IN)                 :: time         !< current simulation time
 ! LOCAL VARIABLES
 CHARACTER(LEN=40)               :: formatStr
 REAL                            :: L2_eq_Error(PP_nVar),Linf_eq_Error(PP_nVar)
-REAL                            :: tmp
+REAL                            :: tmp,AngMom(3),AngMom_t(3)
 !==================================================================================================================================
 IF(doCalcErrorToEquilibrium)THEN
   CALL CalcErrorToEquilibrium(L2_eq_Error,Linf_eq_Error)
@@ -128,6 +179,21 @@ IF(doCalcDeltaBEnergy)THEN
     END IF !doAnalyzeToFile  
   END IF !MPIroot
 END IF
+IF(doCalcAngularMomentum)THEN
+  CALL CalcAngMom(AngMom,U)
+  CALL CalcAngMom(AngMom_t,Ut)
+  IF(MPIroot) THEN
+    WRITE(UNIT_StdOut,'(A, E21.13)')' Total Angular Momentum     : ', SQRT(SUM(AngMom**2))
+    WRITE(UNIT_StdOut,'(A,3E21.13)')' Angular Momentum (X,Y,Z)   : ', AngMom(:)
+    WRITE(UNIT_StdOut,'(A,3E21.13)')' Angular Momentum_t (X,Y,Z) : ', AngMom_t(:) 
+    IF(doAnalyzeToFile)THEN
+      A2F_iVar=A2F_iVar+3
+      A2F_Data(A2F_iVar-2:A2F_iVar)=AngMom(:)
+      A2F_iVar=A2F_iVar+3
+      A2F_Data(A2F_iVar-2:A2F_iVar)=AngMom_t(:)
+    END IF !doAnalyzeToFile
+  END IF !MPIroot 
+END IF !doCalcAngularMomentum
 END SUBROUTINE AnalyzeTestcase
 
 
@@ -239,5 +305,46 @@ END IF
 #endif /*MPI*/
 dbEnergy= s2mu_0*dbEnergy/vol
 END SUBROUTINE CalcDeltaBEnergy
+
+!==================================================================================================================================
+!> Calculate the angular Momentum 
+!==================================================================================================================================
+SUBROUTINE CalcAngMom(AngMom,U_in)
+! MODULES
+USE MOD_Globals
+USE MOD_PreProc
+USE MOD_Analyze_Vars,       ONLY: wGPVol
+USE MOD_Mesh_Vars,          ONLY: sJ,nElems,Elem_xGP
+USE MOD_Testcase_Vars,      ONLY: RotationCenter
+! IMPLICIT VARIABLE HANDLING
+IMPLICIT NONE
+!----------------------------------------------------------------------------------------------------------------------------------
+! INPUT VARIABLES
+REAL,INTENT(IN)                 :: U_in(1:PP_nVar,0:PP_N,0:PP_N,0:PP_N,1:nElems)
+!----------------------------------------------------------------------------------------------------------------------------------
+! OUTPUT VARIABLES
+REAL,INTENT(OUT)                :: AngMom(3)
+!----------------------------------------------------------------------------------------------------------------------------------
+! LOCAL VARIABLES 
+INTEGER                         :: iElem,i,j,k
+REAL                            :: IntegrationWeight,r(3)
+!==================================================================================================================================
+AngMom=0.
+DO iElem=1,nElems
+  DO k=0,PP_N; DO j=0,PP_N; DO i=0,PP_N
+    IntegrationWeight=wGPVol(i,j,k)/sJ(i,j,k,iElem)
+    r=Elem_xGP(:,i,j,k,iElem)-RotationCenter(:)
+    AngMom(:)  = AngMom(:)+CROSS(r(:),U_in(2:4,i,j,k,iElem))*IntegrationWeight
+  END DO; END DO; END DO !i,j,k
+END DO ! iElem
+
+#if MPI
+IF(MPIRoot)THEN
+  CALL MPI_REDUCE(MPI_IN_PLACE,AngMom,3,MPI_DOUBLE_PRECISION,MPI_SUM,0,MPI_COMM_WORLD,iError)
+ELSE
+  CALL MPI_REDUCE(AngMom         ,0  ,3,MPI_DOUBLE_PRECISION,MPI_SUM,0,MPI_COMM_WORLD,iError)
+END IF
+#endif /*MPI*/
+END SUBROUTINE CalcAngMom
 
 END MODULE MOD_Testcase_Analyze

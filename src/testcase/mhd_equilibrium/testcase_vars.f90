@@ -31,6 +31,8 @@ LOGICAL                  :: EvalEquilibrium          !< switch for TC_exactfunc
 LOGICAL                  :: doCalcErrorToEquilibrium !< switch for TC_analyze: compute difference of |U-Ueq|
 LOGICAL                  :: doCalcDeltaBEnergy       !< switch for TC_analyze: compute Energy of 1/(2mu0) |B-Beq|^2
 REAL                     :: deltaB_Energy            !< stored to compute growth rate 
+LOGICAL                  :: doCalcAngularMomentum    !< switch for TC analyze: compute total Angular Momentum 
+REAL                     :: RotationCenter(3)        !< center around which the angular momentum will be computed
 INTEGER                  :: EquilibriumStateIni      !< =-1: Default: no equilibrium state used. U_t(U_eq)=0. 
                                                      !<      Sanity check if code is compiled with this testcase
                                                      !< = 0 : Use U_eq=exactFunc(IniExactFunc) for equilibrium state
@@ -45,7 +47,7 @@ CHARACTER(LEN=255)       :: EquilibriumStateFile    !< if equilibrium is read fr
 
 
 
-LOGICAL                  :: BC21exists               !< BCtype =21 exists: equilibrium state dirichlet BC
+LOGICAL                  :: EqBCexists               !< BCtype =21/29 exists: equilibrium state dirichlet BC
 REAL,ALLOCATABLE         :: InputEq(:,:,:,:,:)       !< equilibrium data from Mesh
 REAL,ALLOCATABLE         :: Ueq(:,:,:,:,:)           !< full equilibrium solution
 REAL,ALLOCATABLE         :: Uteq(:,:,:,:,:)          !< DG time derivative of Ueq
