@@ -4,13 +4,10 @@
 CMAKE_MINIMUM_REQUIRED(VERSION 2.8.11)
 # TODO: eventually require CMake 3.0 in future releases
 # Advantages: Possible to split string
-# =========================================================================
-# Setting to OLD in this way is deprecated
-# =========================================================================
-#IF ("${CMAKE_VERSION}" VERSION_GREATER 3.0.0)
-#  cmake_policy (SET CMP0045 OLD)
-#  cmake_policy (SET CMP0046 OLD)
-#ENDIF()
+IF ("${CMAKE_VERSION}" VERSION_GREATER 3.0.0)
+  cmake_policy (SET CMP0045 OLD)
+  cmake_policy (SET CMP0046 OLD)
+ENDIF()
 LIST(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 SET_PROPERTY(GLOBAL PROPERTY USE_FOLDERS ON)
 INCLUDE(ExternalProject)
