@@ -1,17 +1,13 @@
 # =========================================================================
 # FLUXO CMake configuration
 # =========================================================================
-# NOTE: use minimum CMake version required by tools/libs (Paraview, HDF5, FFTW)
-CMAKE_MINIMUM_REQUIRED(VERSION 3.5.1)
-# Policies (see https://cmake.org/cmake/help/v3.13/manual/cmake-policies.7.html)
-# VERSION_GREATER_EQUAL is incompatible with CMAKE versions < 3.7
-IF(NOT(${CMAKE_VERSION} VERSION_LESS "3.6.0"))
-  SET(GITSHALLOW "GIT_SHALLOW ON")
+CMAKE_MINIMUM_REQUIRED(VERSION 2.8.11)
+# TODO: eventually require CMake 3.0 in future releases
+# Advantages: Possible to split string
+IF ("${CMAKE_VERSION}" VERSION_GREATER 3.0.0)
+  cmake_policy (SET CMP0045 OLD)
+  cmake_policy (SET CMP0046 OLD)
 ENDIF()
-IF(NOT(${CMAKE_VERSION} VERSION_LESS "3.12.0"))
-  CMAKE_POLICY(SET CMP0074 NEW)
-ENDIF()
-# Folder for custom CMake source files
 LIST(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 SET_PROPERTY(GLOBAL PROPERTY USE_FOLDERS ON)
 INCLUDE(ExternalProject)
@@ -128,12 +124,12 @@ IF(FLUXO_DISC_NODETYPE STREQUAL "GAUSS")
 ELSEIF(FLUXO_DISC_NODETYPE STREQUAL "GAUSS-LOBATTO")
   ADD_DEFINITIONS(-DPP_NodeType=2)
 ELSE()
-  MESSAGE(SEND_ERROR " No such node type known.")
+  MESSAGE(ERROR " No such node type known.")
 ENDIF()
 
 IF(FLUXO_DISC_NODETYPE STREQUAL "GAUSS")
   IF(FLUXO_DISCTYPE EQUAL 2)
-    MESSAGE(SEND_ERROR " Split form discretization (DiscType=2) + Gauss nodes is not possible! Choose either DiscType=2 + Gauss-Lob., or DiscType=1 + Gauss / Gauss-Lob. ")
+    MESSAGE(ERROR " Split form discretization (DiscType=2) + Gauss nodes is not possible! Choose either DiscType=2 + Gauss-Lob., or DiscType=1 + Gauss / Gauss-Lob. ")
   ENDIF()
 ENDIF()
 
@@ -181,13 +177,13 @@ IF(FLUXO_EQNSYSNAME STREQUAL "maxwell")
   SET(EQNSYSNAME_FOUND true )
   ADD_DEFINITIONS(-DPP_nVar=8 -Dmaxwell)
   IF (FLUXO_PARABOLIC)
-    MESSAGE(SEND_ERROR " Do not use parabolic flag with maxwell equation system!")
+    MESSAGE(ERROR " Do not use parabolic flag with maxwell equation system!")
   ENDIF()
 ENDIF()
 
 IF(NOT EQNSYSNAME_FOUND ) 
   # no given equation system
-  MESSAGE(SEND_ERROR " This equation system does not appear in CMakeLists.txt!")
+  MESSAGE(ERROR " This equation system does not appear in CMakeLists.txt!")
 ENDIF()
 
 
@@ -205,7 +201,7 @@ IF (FLUXO_PARABOLIC)
   ELSEIF(FLUXO_PARABOLIC_LIFTING STREQUAL "br2")
     ADD_DEFINITIONS(-DPP_Lifting=2)
   ELSE()
-    MESSAGE(SEND_ERROR " No such LIFTING known.")
+    MESSAGE(ERROR " No such LIFTING known.")
   ENDIF()
 
   #### Set the viscosity
@@ -220,7 +216,7 @@ IF (FLUXO_PARABOLIC)
     ELSEIF(FLUXO_EQN_VISCOSITY STREQUAL "powerlaw")
       ADD_DEFINITIONS(-DPP_VISC=2)
     ELSE()
-      MESSAGE(SEND_ERROR " No such VISCOSITY known.")
+      MESSAGE(ERROR " No such VISCOSITY known.")
     ENDIF()
   ELSE()
     UNSET(FLUXO_EQN_VISCOSITY CACHE ) #if parabolic & not navierstokes
@@ -308,7 +304,7 @@ ELSEIF (CMAKE_Fortran_COMPILER_ID MATCHES "Cray")
   SET (FLUXO_COMPILE_FLAGS "-F")
 
 ELSE()
-  MESSAGE(SEND_ERROR "Unknown compiler")
+   MESSAGE(ERROR " Unknown compiler")
 ENDIF()
 
 # =========================================================================
@@ -375,7 +371,6 @@ ELSE()
       CONFIGURE_COMMAND FC=${FLUXO_HDF5FC} CC=${FLUXO_HDF5CC} ${FLUXO_HDF5_DIR}/src/HDF5/configure --prefix=${FLUXO_HDF5_DIR} --enable-fortran ${FLUXO_HDF5PARALLEL} --disable-shared --libdir=${FLUXO_HDF5_DIR}/lib
       BUILD_COMMAND ${MAKE}
     )
-    LIST(APPEND SELFBUILTEXTERNALS HDF5)
     # CMake HDF5 is fast but not that reliable
     #ExternalProject_Add(HDF5
     #  GIT_REPOSITORY ${HDF5DOWNLOAD}
@@ -403,10 +398,12 @@ ELSE()
 ENDIF()
 
 IF(FLUXO_BUILD_HDF5_CMAKE)
-  INCLUDE_DIRECTORIES(${HDF5_INCLUDE_DIR} ${HDF5_INCLUDE_DIR_FORTRAN})
+  INCLUDE_DIRECTORIES (${HDF5_INCLUDE_DIR_FORTRAN} ${HDF5_INCLUDE_DIR})
   LIST(APPEND linkedlibs ${HDF5_FORTRAN_STATIC_LIBRARY} ${HDF5_LIBRARIES})
 ELSE()
   INCLUDE_DIRECTORIES (${HDF5_INCLUDE_DIR_FORTRAN} ${HDF5_INCLUDE_DIR})
+  LIST(INSERT HDF5_LIBRARIES 0 ${HDF5_hdf5_fortran_LIBRARY_RELEASE})
+  LIST(REMOVE_DUPLICATES HDF5_LIBRARIES)
   MESSAGE(STATUS "Found HDF5 Libs: " ${HDF5_LIBRARIES})
   LIST(APPEND linkedlibs ${HDF5_LIBRARIES} )
 ENDIF()
@@ -507,16 +504,14 @@ SET_TARGET_PROPERTIES(fluxolibF90 PROPERTIES COMPILE_FLAGS ${FLUXO_COMPILE_FLAGS
 #SET_TARGET_PROPERTIES(userblocklib PROPERTIES LINKER_LANGUAGE C)
 #ADD_LIBRARY(fluxolib STATIC $<TARGET_OBJECTS:fluxolibF90> $<TARGET_OBJECTS:userblocklib>)
 ADD_LIBRARY(fluxolib STATIC $<TARGET_OBJECTS:fluxolibF90> )
-IF(SELFBUILTEXTERNALS)
-  ADD_DEPENDENCIES(fluxolibF90 ${SELFBUILTEXTERNALS})
-ENDIF()
+ADD_DEPENDENCIES(fluxolibF90 HDF5)
 
 add_exec(fluxo ./src/fluxo.f90)
-ADD_DEPENDENCIES(fluxo fluxolib ${INTERNALLIBS})
+ADD_DEPENDENCIES(fluxo fluxolib HDF5)
 
 IF (_BUILD_FLUXO_POST)
   add_exec(fluxo_post ./src/fluxo_post.f90)
-  ADD_DEPENDENCIES(fluxo_post fluxolib ${INTERNALLIBS})
+  ADD_DEPENDENCIES(fluxo_post fluxolib HDF5)
 ENDIF()
 
 # special compiler flags to avoid warnings for empty functions of testcase.f90 and overwrite of intrinsic abort in globals.f90
